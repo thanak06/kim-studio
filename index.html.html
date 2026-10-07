@@ -1,0 +1,1836 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Avant l'encre — simulateur de tatouage · Kim Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  :root{
+    --ink: #0a0a0c;
+    --panel: #121113;
+    --panel-2: #19181a;
+    --bone: #f1ece0;
+    --bone-dim: #938d82;
+    --line: #2a2825;
+    --blood: #b3902f;
+    --blood-bright: #d9b65a;
+    --skin: #c98a5e;
+    --radius: 1px;
+    color-scheme: dark;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--ink);
+    color:var(--bone);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+    line-height:1.5;
+  }
+  h1,h2,h3{font-family:'Bebas Neue',sans-serif; letter-spacing:0.02em; margin:0;}
+
+  .app{max-width:1280px; margin:0 auto; padding:28px 24px 60px;}
+
+  .topbar{
+    display:flex; flex-direction:column; gap:14px;
+    padding-bottom:26px; margin-bottom:28px;
+    border-bottom:1px solid var(--line);
+  }
+  .brand-row{
+    display:flex; align-items:baseline; gap:14px; flex-wrap:wrap;
+  }
+  .brand{
+    font-size:clamp(2.4rem, 5vw, 3.6rem);
+    color:var(--bone);
+    line-height:0.95;
+    letter-spacing:0.04em;
+  }
+  .brand span{color:var(--blood-bright); display:block;}
+  .brand-rule{
+    flex:1; height:1px; min-width:40px;
+    background:linear-gradient(90deg, var(--blood-bright), transparent);
+    opacity:0.6;
+  }
+  .brand-credit{
+    font-family:'Inter',sans-serif;
+    font-weight:600;
+    font-size:0.78rem;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    color:var(--bone-dim);
+    white-space:nowrap;
+  }
+  .tagline{
+    color:var(--bone-dim);
+    font-size:1.02rem;
+    max-width:60ch;
+    margin:0;
+  }
+
+  .feature-strip{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(190px, 1fr));
+    gap:16px;
+    margin-top:6px;
+  }
+  .feature-item{
+    display:flex; gap:12px; align-items:flex-start;
+  }
+  .feature-item svg{
+    width:22px; height:22px; flex:none;
+    color:var(--blood-bright);
+    margin-top:2px;
+  }
+  .feature-item h3{
+    font-family:'Inter',sans-serif;
+    font-weight:600;
+    font-size:0.86rem;
+    letter-spacing:0.02em;
+    color:var(--bone);
+    margin-bottom:2px;
+  }
+  .feature-item p{
+    font-family:'Inter',sans-serif;
+    font-size:0.78rem;
+    color:var(--bone-dim);
+    margin:0;
+    line-height:1.4;
+  }
+
+  .layout{
+    display:grid;
+    grid-template-columns: 1.55fr 1fr;
+    gap:22px;
+    align-items:start;
+  }
+  @media (max-width: 880px){
+    .layout{grid-template-columns: 1fr;}
+  }
+
+  /* ---- Mode toggle ---- */
+  .mode-toggle{
+    display:flex; gap:8px;
+    margin-bottom:16px;
+  }
+  .mode-btn{
+    flex:1;
+    padding:12px;
+    font-size:0.88rem;
+    text-align:center;
+  }
+  .mode-btn.active{
+    background:var(--blood);
+    border-color:var(--blood);
+    color:var(--bone);
+  }
+
+  /* ---- Stage (canvas) ---- */
+  .stage-wrap{
+    background:var(--panel);
+    border:1px solid var(--line);
+    padding:18px;
+  }
+  .stage-frame{
+    position:relative;
+    width:100%;
+    aspect-ratio: 4 / 3;
+    background:
+      linear-gradient(var(--panel-2), var(--panel-2)) padding-box;
+    border:1px dashed var(--line);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    overflow:hidden;
+  }
+  .empty-state{
+    text-align:center;
+    color:var(--bone-dim);
+    padding:20px;
+    max-width:360px;
+  }
+  .empty-state svg{width:64px; height:64px; opacity:0.55; margin-bottom:10px;}
+  .empty-state p{margin:0 0 16px; font-size:0.95rem;}
+
+  #stage{
+    max-width:100%;
+    max-height:100%;
+    display:block;
+    touch-action:none;
+    cursor:grab;
+  }
+  #stage.dragging{cursor:grabbing;}
+  #stage.draw-mode{cursor:crosshair;}
+  #stage[hidden]{display:none;}
+
+  /* ---- Turntable (multi-angle photo) ---- */
+  .turntable{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-top:14px;
+    padding-top:14px;
+    border-top:1px solid var(--line);
+  }
+  .turntable[hidden]{display:none;}
+  .turn-btn{
+    padding:8px 12px;
+    font-size:1rem;
+    line-height:1;
+  }
+  .turntable input[type=range]{flex:1; margin:0;}
+  .turn-label{
+    font-size:0.78rem;
+    color:var(--bone-dim);
+    white-space:nowrap;
+    min-width:64px;
+    text-align:center;
+  }
+
+  .view-thumbs{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-top:12px;
+  }
+  .view-thumb{
+    position:relative;
+    width:52px; height:52px;
+    border:1px solid var(--line);
+    padding:0;
+    overflow:hidden;
+    cursor:pointer;
+  }
+  .view-thumb img{width:100%; height:100%; object-fit:cover; display:block;}
+  .view-thumb.active{border-color:var(--blood-bright);}
+  .view-thumb .remove{
+    position:absolute; top:0; right:0;
+    background:rgba(16,14,13,0.85);
+    color:var(--bone);
+    border:none;
+    width:16px; height:16px;
+    font-size:10px;
+    line-height:16px;
+    padding:0;
+    cursor:pointer;
+  }
+
+  .stage-actions{
+    display:flex; flex-wrap:wrap; gap:10px;
+    margin-top:14px;
+  }
+  button{
+    font-family:'Inter',sans-serif;
+    font-weight:600;
+    font-size:0.86rem;
+    background:transparent;
+    color:var(--bone);
+    border:1px solid var(--line);
+    padding:10px 16px;
+    cursor:pointer;
+    border-radius:var(--radius);
+    transition: border-color .15s ease, color .15s ease, background .15s ease;
+  }
+  button:hover{border-color:var(--bone-dim);}
+  button:focus-visible{outline:2px solid var(--blood-bright); outline-offset:2px;}
+  button.primary{
+    background:var(--blood);
+    border-color:var(--blood);
+    color:var(--bone);
+  }
+  button.primary:hover{background:var(--blood-bright); border-color:var(--blood-bright);}
+  button:disabled{opacity:0.4; cursor:not-allowed;}
+
+  .disclaimer{
+    color:var(--bone-dim);
+    font-size:0.78rem;
+    margin:14px 0 0;
+    border-top:1px solid var(--line);
+    padding-top:12px;
+  }
+
+  /* ---- 3D block ---- */
+  #threeBlock[hidden]{display:none;}
+  .three-layout{
+    display:flex;
+    gap:16px;
+    flex-wrap:wrap;
+  }
+  .tex-col{
+    width:170px;
+    flex:none;
+  }
+  .tex-col p.hint{margin-top:8px;}
+  #texCanvas{
+    width:100%;
+    aspect-ratio: 2 / 3;
+    display:block;
+    border:1px solid var(--line);
+    touch-action:none;
+    cursor:grab;
+    background:var(--panel-2);
+  }
+  #texCanvas.dragging{cursor:grabbing;}
+  #texCanvas.draw-mode{cursor:crosshair;}
+  .three-viewer{
+    flex:1;
+    min-width:260px;
+    position:relative;
+    aspect-ratio: 4 / 3;
+    border:1px dashed var(--line);
+    background:radial-gradient(circle at 50% 35%, #26201c 0%, #151210 75%);
+    overflow:hidden;
+  }
+  #three3d{
+    width:100%; height:100%; display:block;
+    touch-action:none; cursor:grab;
+  }
+  #three3d.dragging{cursor:grabbing;}
+  .three-error{
+    position:absolute; inset:0;
+    display:flex; align-items:center; justify-content:center;
+    text-align:center; padding:20px;
+    color:var(--bone-dim); font-size:0.85rem;
+  }
+  .three-error[hidden]{display:none;}
+  .three-hint{
+    position:absolute; bottom:8px; left:0; right:0;
+    text-align:center;
+    font-size:0.7rem;
+    color:var(--bone-dim);
+    pointer-events:none;
+  }
+
+  .bodypart-grid{
+    display:grid;
+    grid-template-columns:repeat(3, 1fr);
+    gap:6px;
+    margin-bottom:14px;
+  }
+  .bodypart-btn{
+    padding:8px 4px;
+    font-size:0.74rem;
+  }
+  .bodypart-btn.active{
+    border-color:var(--blood-bright);
+    color:var(--bone);
+    background:var(--panel-2);
+  }
+
+  .skin-row{display:flex; gap:8px; align-items:center; margin-bottom:14px;}
+  .skin-row input[type=color]{flex:none; width:44px; padding:2px;}
+  .skin-row button{flex:1; font-size:0.76rem; padding:8px;}
+
+  /* ---- Side panel ---- */
+  .panel{
+    display:flex; flex-direction:column; gap:0;
+    border:1px solid var(--line);
+    background:var(--panel);
+  }
+  .step{
+    padding:20px;
+    border-bottom:1px solid var(--line);
+  }
+  .step:last-child{border-bottom:none;}
+  .step h2{
+    font-size:1.4rem;
+    display:flex; align-items:center; gap:10px;
+    margin-bottom:14px;
+    color:var(--bone);
+  }
+  .step h2 .num{
+    font-family:'Inter',sans-serif;
+    font-weight:700;
+    font-size:0.78rem;
+    color:var(--ink);
+    background:var(--skin);
+    width:22px; height:22px;
+    display:flex; align-items:center; justify-content:center;
+    border-radius:50%;
+    flex:none;
+  }
+
+  .step-btn{
+    width:100%;
+    text-align:left;
+    padding:12px 14px;
+  }
+
+  .hint{
+    color:var(--bone-dim);
+    font-size:0.8rem;
+    margin:8px 0 0;
+  }
+
+  .tabs{display:flex; gap:6px; margin-bottom:14px;}
+  .tab{
+    flex:1;
+    padding:8px 6px;
+    font-size:0.78rem;
+    border-color:var(--line);
+    color:var(--bone-dim);
+  }
+  .tab.active{
+    color:var(--bone);
+    border-color:var(--skin);
+  }
+
+  .flash-grid{
+    display:grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap:8px;
+  }
+  .flash-item{
+    padding:8px;
+    aspect-ratio:1;
+    display:flex; align-items:center; justify-content:center;
+    border:1px solid var(--line);
+  }
+  .flash-item svg{width:100%; height:100%;}
+  .flash-item.selected{border-color:var(--blood-bright); background:var(--panel-2);}
+
+  label{
+    display:block;
+    font-size:0.82rem;
+    color:var(--bone-dim);
+    margin-bottom:12px;
+  }
+  label:last-of-type{margin-bottom:0;}
+  label span.val{color:var(--bone); font-weight:600; float:right;}
+
+  input[type=range]{
+    width:100%;
+    margin-top:6px;
+    accent-color:var(--blood-bright);
+    background:transparent;
+  }
+  input[type=color]{
+    width:100%;
+    height:34px;
+    margin-top:6px;
+    border:1px solid var(--line);
+    background:var(--panel-2);
+    padding:2px;
+    border-radius:var(--radius);
+    cursor:pointer;
+  }
+  input[type=number]{
+    width:100%;
+    margin-top:6px;
+    background:var(--panel-2);
+    color:var(--bone);
+    border:1px solid var(--line);
+    padding:8px;
+    font-family:'Inter',sans-serif;
+    font-size:0.9rem;
+    border-radius:var(--radius);
+  }
+  select{
+    width:100%;
+    margin-top:6px;
+    background:var(--panel-2);
+    color:var(--bone);
+    border:1px solid var(--line);
+    padding:8px;
+    font-family:'Inter',sans-serif;
+    font-size:0.85rem;
+    border-radius:var(--radius);
+  }
+  .checkbox{
+    display:flex; align-items:center; gap:8px;
+    margin-top:16px;
+  }
+  .checkbox input{width:auto; margin:0;}
+
+  .brush-row{display:flex; gap:10px; align-items:flex-end;}
+  .brush-row > div{flex:1;}
+
+  .print-row{display:flex; gap:10px; align-items:flex-end; margin-bottom:14px;}
+  .print-row > div{flex:1;}
+  .print-preview{
+    display:flex; align-items:center; gap:12px;
+    margin:14px 0;
+    padding:12px;
+    border:1px solid var(--line);
+    background:var(--panel-2);
+  }
+  .print-preview img{
+    max-width:70px; max-height:70px;
+    background:#fff;
+    border:1px solid var(--line);
+  }
+  .print-preview .meta{font-size:0.78rem; color:var(--bone-dim);}
+  .print-actions{display:flex; gap:8px; flex-wrap:wrap;}
+
+  @keyframes reveal{
+    from{opacity:0; transform:scale(0.98);}
+    to{opacity:1; transform:scale(1);}
+  }
+  .revealed{animation: reveal .35s ease;}
+
+  @media (prefers-reduced-motion: reduce){
+    .revealed{animation:none;}
+  }
+
+  /* ---- Print sheet (hidden except when printing) ---- */
+  #printSheet{display:none;}
+  @media print{
+    body > *:not(#printSheet){display:none !important;}
+    #printSheet{
+      display:block !important;
+      background:#fff;
+      color:#000;
+      padding:1cm;
+    }
+    #printSheet img{display:block;}
+    #printSheet .ruler{
+      width:5cm; height:0.5cm;
+      border-left:1px solid #000; border-right:1px solid #000;
+      border-top:1px solid #000;
+      position:relative;
+      margin-top:1cm;
+    }
+    #printSheet .ruler-label{font-size:9pt; margin-top:2mm; font-family:sans-serif;}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand-row">
+      <h1 class="brand">AVANT<span>L'ENCRE</span></h1>
+      <div class="brand-rule"></div>
+      <span class="brand-credit">Kim Studio</span>
+    </div>
+    <p class="tagline">Ton tatouage, avant même de l'avoir. Place un motif, ajuste-le, visualise-le sur ta photo ou en 3D tournable à 360°, puis imprime-le à la bonne taille.</p>
+
+    <div class="feature-strip">
+      <div class="feature-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 12l9 4 9-4M3 17l9 4 9-4" stroke-opacity="0.5"/></svg>
+        <div><h3>Multi-angles</h3><p>Plusieurs photos, une vue qui change selon l'angle.</p></div>
+      </div>
+      <div class="feature-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg>
+        <div><h3>3D tournable à 360°</h3><p>Forme générique rotatable, motif enroulé dessus.</p></div>
+      </div>
+      <div class="feature-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 16l4-8 4 5 3-4 5 7" /><path d="M4 20h16"/></svg>
+        <div><h3>Détourage automatique</h3><p>Fond clair retiré, même depuis un simple JPG.</p></div>
+      </div>
+      <div class="feature-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="3" width="14" height="14" rx="1"/><path d="M8 21h8M9 17v4M15 17v4"/></svg>
+        <div><h3>Impression taille réelle</h3><p>Motif isolé, couleur fidèle, avec réglette de contrôle.</p></div>
+      </div>
+    </div>
+  </header>
+
+  <main class="layout">
+
+    <section class="stage-wrap">
+
+      <div class="mode-toggle">
+        <button id="modePhotoBtn" class="mode-btn active">Mode photo (tes prises)</button>
+        <button id="mode3dBtn" class="mode-btn">Mode 3D (forme générique, tournable)</button>
+      </div>
+
+      <!-- ===== PHOTO MODE ===== -->
+      <div id="photoBlock">
+        <div class="stage-frame" id="stageFrame">
+          <div class="empty-state" id="emptyState">
+            <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 58 C18 40 16 30 22 18 C26 10 34 6 40 10 C46 14 44 22 40 26 C36 30 34 34 36 40 C38 46 40 50 38 58" stroke-linecap="round"/>
+            </svg>
+            <p>Commence par une ou plusieurs photos de la zone à tatouer — bras, épaule, cheville, peu importe. Prends plusieurs angles si tu veux pouvoir changer d'angle.</p>
+            <button id="emptyUploadBtn" class="primary">Choisir des photos</button>
+          </div>
+          <canvas id="stage" hidden></canvas>
+        </div>
+
+        <div class="turntable" id="turntable" hidden>
+          <button id="turnPrev" class="turn-btn" title="Vue précédente">‹</button>
+          <input type="range" id="turnRange" min="0" max="0" value="0" step="1">
+          <button id="turnNext" class="turn-btn" title="Vue suivante">›</button>
+          <span class="turn-label" id="turnLabel">Vue 1 / 1</span>
+        </div>
+
+        <div class="view-thumbs" id="viewThumbs" hidden></div>
+
+        <div class="stage-actions">
+          <button id="addPhotoBtn">Ajouter une photo (angle)</button>
+          <button id="resetBtn" disabled>Réinitialiser cette vue</button>
+          <button id="downloadBtn" class="primary" disabled>Télécharger l'aperçu</button>
+        </div>
+        <p class="disclaimer">Aperçu indicatif, réalisé localement dans ton navigateur — aucune photo n'est envoyée où que ce soit. Le curseur ci-dessus fait défiler tes propres photos prises sous différents angles ; ce n'est pas une reconstruction 3D. Pour une vraie rotation à 360°, passe en "Mode 3D" ci-dessus. Le rendu réel dépendra toujours du tatoueur, du grain de la peau et de la cicatrisation.</p>
+      </div>
+
+      <!-- ===== 3D MODE ===== -->
+      <div id="threeBlock" hidden>
+        <div class="three-layout">
+          <div class="tex-col">
+            <canvas id="texCanvas" width="960" height="1440"></canvas>
+            <p class="hint">Place le motif ici à plat — il s'enroule automatiquement autour de la forme 3D à droite.</p>
+          </div>
+          <div class="three-viewer">
+            <canvas id="three3d"></canvas>
+            <div class="three-error" id="threeError" hidden>Le moteur 3D n'a pas pu se charger (connexion réseau). Le mode photo reste disponible.</div>
+            <div class="three-hint">Glisse pour tourner · molette pour zoomer</div>
+          </div>
+        </div>
+        <div class="stage-actions">
+          <button id="resetBtn3d">Réinitialiser cette forme</button>
+          <button id="downloadBtn3d" class="primary">Télécharger la vue actuelle</button>
+        </div>
+        <p class="disclaimer">Forme 3D générique (pas la reconstruction du corps du client — impossible à partir d'une photo). Tu peux la tourner librement à 360° pour visualiser le motif sous tous les angles. Choisis la partie du corps et la teinte de peau dans l'étape 1 ci-contre.</p>
+      </div>
+
+    </section>
+
+    <aside class="panel">
+
+      <div class="step" id="step1">
+        <h2><span class="num">1</span><span id="step1Title">Tes photos</span></h2>
+
+        <div id="photoStep1">
+          <input type="file" id="skinUpload" accept="image/*" multiple hidden>
+          <button id="skinUploadBtn" class="step-btn">Choisir une ou plusieurs photos</button>
+          <p class="hint" id="skinFileName">Aucune photo sélectionnée. Ajoute 2 à 5 angles différents pour pouvoir changer de point de vue.</p>
+        </div>
+
+        <div id="threeStep1" hidden>
+          <div class="bodypart-grid" id="bodypartGrid">
+            <button class="bodypart-btn" data-part="bras">Bras</button>
+            <button class="bodypart-btn" data-part="avantbras">Avant-bras</button>
+            <button class="bodypart-btn" data-part="jambe">Jambe</button>
+            <button class="bodypart-btn" data-part="mollet">Mollet</button>
+            <button class="bodypart-btn" data-part="dos">Dos</button>
+            <button class="bodypart-btn" data-part="torse">Torse</button>
+          </div>
+          <div class="skin-row">
+            <input type="color" id="skinToneInput" value="#c69874">
+            <button id="sampleSkinBtn" type="button">Échantillonner depuis une photo</button>
+            <input type="file" id="sampleSkinInput" accept="image/*" hidden>
+          </div>
+          <p class="hint" id="skinToneStatus">La forme est générique ; seule la teinte de peau peut être reprise d'une photo, pas les détails.</p>
+
+          <div class="skin-row" style="margin-top:14px;">
+            <button id="bumpUploadBtn" type="button">Relief musculaire depuis une photo</button>
+            <input type="file" id="bumpUploadInput" accept="image/*" hidden>
+          </div>
+          <button id="bumpClearBtn" type="button" class="step-btn" hidden>Revenir au relief simulé</button>
+          <p class="hint" id="bumpStatus">Optionnel : une photo bien contrastée d'un dos/bras musclé (la tienne ou une image dont tu as les droits) donne un relief bien plus réaliste que la version simulée par défaut.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <h2><span class="num">2</span>Le motif</h2>
+        <div class="tabs">
+          <button class="tab active" data-mode="flash">Bibliothèque</button>
+          <button class="tab" data-mode="upload">Importer</button>
+          <button class="tab" data-mode="draw">Dessiner</button>
+        </div>
+
+        <div class="tab-panel" id="flashPanel">
+          <div class="flash-grid" id="flashGrid"></div>
+        </div>
+
+        <div class="tab-panel" id="uploadPanel" hidden>
+          <input type="file" id="designUpload" accept="image/*" hidden>
+          <button id="designUploadBtn" class="step-btn">Importer une image</button>
+          <p class="hint">PNG transparent ou JPG à fond clair — le fond est détouré automatiquement (réglage à l'étape 3).</p>
+        </div>
+
+        <div class="tab-panel" id="drawPanel" hidden>
+          <div class="brush-row">
+            <div>
+              <label>Épaisseur du trait <span class="val" id="brushSizeVal">4</span>
+                <input type="range" id="brushSize" min="1" max="20" value="4">
+              </label>
+            </div>
+          </div>
+          <button id="clearDrawBtn" class="step-btn">Effacer le dessin de cette vue</button>
+          <p class="hint">Dessine directement sur la surface avec la souris ou le doigt.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <h2><span class="num">3</span>Ajuster</h2>
+
+        <label>Taille <span class="val" id="scaleVal">100%</span>
+          <input type="range" id="scaleRange" min="20" max="220" value="100">
+        </label>
+
+        <label>Rotation du motif <span class="val" id="rotVal">0°</span>
+          <input type="range" id="rotRange" min="-180" max="180" value="0">
+        </label>
+
+        <label>Opacité <span class="val" id="opacityVal">90%</span>
+          <input type="range" id="opacityRange" min="10" max="100" value="90">
+        </label>
+
+        <label>Détourage du fond clair <span class="val" id="cutoutVal">55%</span>
+          <input type="range" id="cutoutRange" min="0" max="100" value="55">
+        </label>
+
+        <label>Couleur d'encre
+          <input type="color" id="inkColor" value="#141110">
+        </label>
+
+        <label>Rendu sur la peau
+          <select id="blendSelect">
+            <option value="multiply">Naturel</option>
+            <option value="source-over">Encre fraîche</option>
+            <option value="soft-light">Estompé</option>
+          </select>
+        </label>
+
+        <label class="checkbox">
+          <input type="checkbox" id="healedToggle">
+          Simuler un tatouage cicatrisé
+        </label>
+
+        <label>Réalisme (grain de peau) <span class="val" id="realismVal">60%</span>
+          <input type="range" id="realismRange" min="0" max="100" value="60">
+        </label>
+
+        <p class="hint">Glisse le motif directement sur la surface pour le repositionner. Chaque vue / forme garde son propre réglage.</p>
+      </div>
+
+      <div class="step">
+        <h2><span class="num">4</span>Imprimer</h2>
+        <div class="print-row">
+          <div>
+            <label>Largeur réelle (cm)
+              <input type="number" id="printWidth" min="1" max="40" step="0.5" value="8">
+            </label>
+          </div>
+        </div>
+        <button id="buildPrintBtn" class="step-btn">Générer le visuel à imprimer</button>
+
+        <div class="print-preview" id="printPreview" hidden>
+          <img id="printThumb" alt="Aperçu d'impression">
+          <div class="meta" id="printMeta"></div>
+        </div>
+
+        <div class="print-actions" id="printActions" hidden>
+          <button id="printDownloadBtn">Télécharger (taille réelle)</button>
+          <button id="printBtn" class="primary">Imprimer</button>
+        </div>
+        <p class="hint">Le visuel imprimé reprend uniquement le motif (couleur et détourage actuels), sans la peau, prêt à découper ou à poser sur toi. Une réglette de 5 cm est incluse sur la page imprimée : mesure-la pour vérifier que ton imprimante n'a pas rééchelonné l'image (règle l'échelle d'impression sur 100 % / taille réelle, pas "ajuster à la page").</p>
+      </div>
+
+    </aside>
+  </main>
+</div>
+
+<div id="printSheet">
+  <img id="printSheetImg" alt="Motif à imprimer">
+  <div class="ruler"></div>
+  <div class="ruler-label">5 cm — vérifie cette mesure avec une règle une fois imprimé.</div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- Flash designs (original simple line-art, generated inline) ----------
+  const FLASH_DESIGNS = [
+    { id:'vague', name:'Vague',
+      svg:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><path d="M15 130 Q 45 90 75 130 T 135 130 T 195 130" stroke="#141110" stroke-width="7" fill="none" stroke-linecap="round"/><circle cx="150" cy="50" r="17" stroke="#141110" stroke-width="7" fill="none"/></svg>` },
+    { id:'montagnes', name:'Montagnes',
+      svg:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><path d="M20 155 L68 78 L98 118 L138 55 L182 155 Z" stroke="#141110" stroke-width="7" fill="none" stroke-linejoin="round" stroke-linecap="round"/><circle cx="150" cy="38" r="13" stroke="#141110" stroke-width="7" fill="none"/></svg>` },
+    { id:'lune', name:'Lune',
+      svg:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><path d="M122 35 A52 52 0 1 0 122 165 A40 40 0 1 1 122 35 Z" stroke="#141110" stroke-width="6" fill="none" stroke-linejoin="round"/><path d="M50 55 L50 67 M44 61 L56 61" stroke="#141110" stroke-width="5" stroke-linecap="round"/><path d="M35 100 L35 110 M30 105 L40 105" stroke="#141110" stroke-width="4" stroke-linecap="round"/></svg>` },
+    { id:'brin', name:'Brin',
+      svg:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><path d="M105 185 Q 90 110 115 15" stroke="#141110" stroke-width="6" fill="none" stroke-linecap="round"/><ellipse cx="88" cy="150" rx="20" ry="9" transform="rotate(-30 88 150)" stroke="#141110" stroke-width="5" fill="none"/><ellipse cx="128" cy="120" rx="20" ry="9" transform="rotate(30 128 120)" stroke="#141110" stroke-width="5" fill="none"/><ellipse cx="90" cy="90" rx="18" ry="8" transform="rotate(-30 90 90)" stroke="#141110" stroke-width="5" fill="none"/><ellipse cx="126" cy="60" rx="16" ry="7" transform="rotate(30 126 60)" stroke="#141110" stroke-width="5" fill="none"/></svg>` },
+    { id:'fleche', name:'Flèche',
+      svg:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><line x1="35" y1="165" x2="165" y2="35" stroke="#141110" stroke-width="7" stroke-linecap="round"/><path d="M165 35 L138 42 M165 35 L158 62" stroke="#141110" stroke-width="7" fill="none" stroke-linecap="round"/><path d="M35 165 L58 158 M35 165 L42 138" stroke="#141110" stroke-width="7" fill="none" stroke-linecap="round"/></svg>` },
+    { id:'plume', name:'Plume',
+      svg:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><line x1="100" y1="20" x2="100" y2="185" stroke="#141110" stroke-width="6" stroke-linecap="round"/><path d="M100 45 L70 60 M100 65 L65 82 M100 85 L62 104 M100 105 L65 126 M100 125 L70 145 M100 45 L130 60 M100 65 L135 82 M100 85 L138 104 M100 105 L135 126 M100 125 L130 145" stroke="#141110" stroke-width="4" fill="none" stroke-linecap="round"/></svg>` },
+    { id:'racines', name:'Racines',
+      svg:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><path d="M100 15 L100 190" stroke="#141110" stroke-width="5" fill="none" stroke-linecap="round"/><path d="M100 35 L72 20 M72 20 L58 10 M72 20 L64 32 M100 35 L128 18 M128 18 L142 8 M128 18 L136 30" stroke="#141110" stroke-width="3.5" fill="none" stroke-linecap="round"/><path d="M100 65 L65 50 M65 50 L48 40 M65 50 L55 62 M100 65 L135 48 M135 48 L152 38 M135 48 L145 60" stroke="#141110" stroke-width="3.5" fill="none" stroke-linecap="round"/><path d="M100 100 L60 90 M60 90 L42 82 M60 90 L50 102 M100 100 L140 88 M140 88 L158 80 M140 88 L150 100" stroke="#141110" stroke-width="3.5" fill="none" stroke-linecap="round"/><path d="M100 135 L68 148 M68 148 L52 158 M68 148 L58 136 M100 135 L132 150 M132 150 L148 160 M132 150 L142 138" stroke="#141110" stroke-width="3.5" fill="none" stroke-linecap="round"/><path d="M100 165 L78 178 M78 178 L64 186 M100 165 L122 180 M122 180 L136 188" stroke="#141110" stroke-width="3" fill="none" stroke-linecap="round"/></svg>` },
+    { id:'ailes', name:'Ailes gothiques',
+      svg:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><path d="M100 30 L92 55 M100 25 L100 55 M100 30 L108 55" stroke="#141110" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M100 55 L78 45 L82 58 L60 42 L66 60 L42 50 L50 70 L28 65 L38 85 L20 85 L33 102 L18 112 L34 118 L22 135 L40 128 L34 148 L50 138 L48 158 L62 145 L64 162 L76 148 L82 130 L92 118 L100 100" stroke="#141110" stroke-width="4" fill="none" stroke-linejoin="round" stroke-linecap="round"/><path d="M100 55 L78 45 L82 58 L60 42 L66 60 L42 50 L50 70 L28 65 L38 85 L20 85 L33 102 L18 112 L34 118 L22 135 L40 128 L34 148 L50 138 L48 158 L62 145 L64 162 L76 148 L82 130 L92 118 L100 100" stroke="#141110" stroke-width="4" fill="none" stroke-linejoin="round" stroke-linecap="round" transform="scale(-1,1) translate(-200,0)"/></svg>` },
+  ];
+
+  // ---------- State ----------
+  const state = {
+    viewMode: 'photo',            // 'photo' | '3d'
+    views: [],                    // photo mode: {name, img, x, y, scale, rotation, strokes:[]}
+    activeView: -1,
+    view3D: { x:0.5, y:0.5, scale:1.0, rotation:0, strokes:[] },
+    bodyPart: 'bras',
+    skinTone: '#c69874',
+    customBumpCanvas: null,
+    mode: 'flash',                 // motif source: 'flash' | 'upload' | 'draw'
+    designImg: null,
+    designRawImg: null,
+    designMaskCanvas: null,
+    designId: null,
+    cutout: 0.55,
+    opacity: 0.9,
+    blend: 'multiply',
+    inkColor: '#141110',
+    healed: false,
+    realism: 0.6,
+    noiseCanvas: null,
+    currentStroke: null,
+  };
+
+  function currentView(){
+    return state.activeView >= 0 ? state.views[state.activeView] : null;
+  }
+  function activeInkView(){
+    return state.viewMode === '3d' ? state.view3D : currentView();
+  }
+
+  // ---------- DOM refs ----------
+  const modePhotoBtn = document.getElementById('modePhotoBtn');
+  const mode3dBtn = document.getElementById('mode3dBtn');
+  const photoBlock = document.getElementById('photoBlock');
+  const threeBlock = document.getElementById('threeBlock');
+  const photoStep1 = document.getElementById('photoStep1');
+  const threeStep1 = document.getElementById('threeStep1');
+  const step1Title = document.getElementById('step1Title');
+
+  const stageFrame = document.getElementById('stageFrame');
+  const emptyState = document.getElementById('emptyState');
+  const canvas = document.getElementById('stage');
+  const ctx = canvas.getContext('2d');
+
+  const skinUploadInput = document.getElementById('skinUpload');
+  const skinUploadBtn = document.getElementById('skinUploadBtn');
+  const emptyUploadBtn = document.getElementById('emptyUploadBtn');
+  const addPhotoBtn = document.getElementById('addPhotoBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const skinFileName = document.getElementById('skinFileName');
+
+  const turntable = document.getElementById('turntable');
+  const turnRange = document.getElementById('turnRange');
+  const turnPrev = document.getElementById('turnPrev');
+  const turnNext = document.getElementById('turnNext');
+  const turnLabel = document.getElementById('turnLabel');
+  const viewThumbs = document.getElementById('viewThumbs');
+
+  const texCanvas = document.getElementById('texCanvas');
+  const texCtx = texCanvas.getContext('2d');
+  const three3dCanvas = document.getElementById('three3d');
+  const threeError = document.getElementById('threeError');
+  const resetBtn3d = document.getElementById('resetBtn3d');
+  const downloadBtn3d = document.getElementById('downloadBtn3d');
+  const bodypartGrid = document.getElementById('bodypartGrid');
+  const skinToneInput = document.getElementById('skinToneInput');
+  const sampleSkinBtn = document.getElementById('sampleSkinBtn');
+  const sampleSkinInput = document.getElementById('sampleSkinInput');
+  const skinToneStatus = document.getElementById('skinToneStatus');
+  const bumpUploadBtn = document.getElementById('bumpUploadBtn');
+  const bumpUploadInput = document.getElementById('bumpUploadInput');
+  const bumpClearBtn = document.getElementById('bumpClearBtn');
+  const bumpStatus = document.getElementById('bumpStatus');
+
+  const tabs = document.querySelectorAll('.tab');
+  const flashPanel = document.getElementById('flashPanel');
+  const uploadPanel = document.getElementById('uploadPanel');
+  const drawPanel = document.getElementById('drawPanel');
+  const flashGrid = document.getElementById('flashGrid');
+
+  const designUploadInput = document.getElementById('designUpload');
+  const designUploadBtn = document.getElementById('designUploadBtn');
+
+  const brushSize = document.getElementById('brushSize');
+  const brushSizeVal = document.getElementById('brushSizeVal');
+  const clearDrawBtn = document.getElementById('clearDrawBtn');
+
+  const scaleRange = document.getElementById('scaleRange');
+  const scaleVal = document.getElementById('scaleVal');
+  const rotRange = document.getElementById('rotRange');
+  const rotVal = document.getElementById('rotVal');
+  const opacityRange = document.getElementById('opacityRange');
+  const opacityVal = document.getElementById('opacityVal');
+  const inkColorInput = document.getElementById('inkColor');
+  const cutoutRange = document.getElementById('cutoutRange');
+  const cutoutVal = document.getElementById('cutoutVal');
+  const blendSelect = document.getElementById('blendSelect');
+  const healedToggle = document.getElementById('healedToggle');
+  const realismRange = document.getElementById('realismRange');
+  const realismVal = document.getElementById('realismVal');
+
+  const printWidth = document.getElementById('printWidth');
+  const buildPrintBtn = document.getElementById('buildPrintBtn');
+  const printPreview = document.getElementById('printPreview');
+  const printThumb = document.getElementById('printThumb');
+  const printMeta = document.getElementById('printMeta');
+  const printActions = document.getElementById('printActions');
+  const printDownloadBtn = document.getElementById('printDownloadBtn');
+  const printBtn = document.getElementById('printBtn');
+  const printSheetImg = document.getElementById('printSheetImg');
+
+  // ---------- Mode toggle ----------
+  modePhotoBtn.addEventListener('click', () => setViewMode('photo'));
+  mode3dBtn.addEventListener('click', () => setViewMode('3d'));
+
+  function setViewMode(m){
+    state.viewMode = m;
+    modePhotoBtn.classList.toggle('active', m === 'photo');
+    mode3dBtn.classList.toggle('active', m === '3d');
+    photoBlock.hidden = m !== 'photo';
+    threeBlock.hidden = m !== '3d';
+    photoStep1.hidden = m !== 'photo';
+    threeStep1.hidden = m !== '3d';
+    step1Title.textContent = m === 'photo' ? 'Tes photos' : 'Forme 3D & peau';
+
+    const v = activeInkView();
+    if (v){
+      scaleRange.value = Math.round(v.scale * 100);
+      scaleVal.textContent = Math.round(v.scale * 100) + '%';
+      rotRange.value = Math.round(v.rotation * 180 / Math.PI);
+      rotVal.textContent = Math.round(v.rotation * 180 / Math.PI) + '°';
+    }
+
+    if (m === '3d'){
+      initThreeIfNeeded();
+      requestAnimationFrame(() => { resizeThree(); redraw(); });
+    } else {
+      redraw();
+    }
+  }
+
+  // ---------- Build flash grid ----------
+  FLASH_DESIGNS.forEach(d => {
+    const btn = document.createElement('button');
+    btn.className = 'flash-item';
+    btn.title = d.name;
+    btn.setAttribute('aria-label', d.name);
+    btn.innerHTML = d.svg;
+    btn.addEventListener('click', () => selectFlashDesign(d));
+    btn.dataset.id = d.id;
+    flashGrid.appendChild(btn);
+  });
+
+  function selectFlashDesign(d){
+    state.designId = d.id;
+    const img = new Image();
+    img.onload = () => {
+      state.designImg = img;
+      state.designRawImg = img;
+      state.designMaskCanvas = processDesignImage(img, state.cutout);
+      redraw();
+    };
+    img.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(d.svg);
+    [...flashGrid.children].forEach(el => el.classList.toggle('selected', el.dataset.id === d.id));
+    refreshActionState();
+  }
+
+  // ---------- Tabs (motif source) ----------
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      state.mode = tab.dataset.mode;
+      flashPanel.hidden = state.mode !== 'flash';
+      uploadPanel.hidden = state.mode !== 'upload';
+      drawPanel.hidden = state.mode !== 'draw';
+      canvas.classList.toggle('draw-mode', state.mode === 'draw');
+      texCanvas.classList.toggle('draw-mode', state.mode === 'draw');
+      redraw();
+    });
+  });
+
+  // ---------- Photo upload (multi-angle) ----------
+  function triggerSkinUpload(){ skinUploadInput.click(); }
+  skinUploadBtn.addEventListener('click', triggerSkinUpload);
+  emptyUploadBtn.addEventListener('click', triggerSkinUpload);
+  addPhotoBtn.addEventListener('click', triggerSkinUpload);
+
+  skinUploadInput.addEventListener('change', (e) => {
+    const files = [...e.target.files];
+    if (!files.length) return;
+    let loaded = 0;
+    const wasEmpty = state.views.length === 0;
+    files.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = new Image();
+        img.onload = () => {
+          state.views.push({
+            name: 'Vue ' + (state.views.length + 1),
+            img: img,
+            x: 0.5, y: 0.5, scale: 1.0, rotation: 0,
+            strokes: [],
+          });
+          loaded++;
+          if (loaded === files.length){
+            emptyState.hidden = true;
+            canvas.hidden = false;
+            canvas.classList.add('revealed');
+            rebuildThumbs();
+            updateTurntable();
+            setActiveView(wasEmpty ? 0 : state.views.length - files.length);
+            rebuildThumbs();
+            skinFileName.textContent = state.views.length + ' photo(s) chargée(s).';
+            refreshActionState();
+            redraw();
+          }
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+    skinUploadInput.value = '';
+  });
+
+  function setActiveView(index){
+    if (index < 0 || index >= state.views.length) return;
+    state.activeView = index;
+    const view = state.views[index];
+    setupCanvasForImage(view.img);
+    scaleRange.value = Math.round(view.scale * 100);
+    scaleVal.textContent = Math.round(view.scale * 100) + '%';
+    rotRange.value = Math.round(view.rotation * 180 / Math.PI);
+    rotVal.textContent = Math.round(view.rotation * 180 / Math.PI) + '°';
+    turnRange.value = index;
+    turnLabel.textContent = view.name + ' / ' + state.views.length;
+    [...viewThumbs.children].forEach((el, i) => el.classList.toggle('active', i === index));
+    redraw();
+  }
+
+  function rebuildThumbs(){
+    viewThumbs.innerHTML = '';
+    if (state.views.length === 0){ viewThumbs.hidden = true; return; }
+    viewThumbs.hidden = false;
+    state.views.forEach((v, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'view-thumb' + (i === state.activeView ? ' active' : '');
+      const img = document.createElement('img');
+      img.src = v.img.src;
+      btn.appendChild(img);
+      const rm = document.createElement('button');
+      rm.className = 'remove';
+      rm.textContent = '×';
+      rm.title = 'Supprimer cette vue';
+      rm.addEventListener('click', (evt) => { evt.stopPropagation(); removeView(i); });
+      btn.appendChild(rm);
+      btn.addEventListener('click', () => setActiveView(i));
+      viewThumbs.appendChild(btn);
+    });
+  }
+
+  function removeView(index){
+    state.views.splice(index, 1);
+    if (state.views.length === 0){
+      state.activeView = -1;
+      emptyState.hidden = false;
+      canvas.hidden = true;
+      viewThumbs.hidden = true;
+      turntable.hidden = true;
+      skinFileName.textContent = 'Aucune photo sélectionnée. Ajoute 2 à 5 angles différents pour pouvoir changer de point de vue.';
+    } else {
+      const newIndex = Math.max(0, index - 1);
+      rebuildThumbs();
+      updateTurntable();
+      setActiveView(newIndex);
+      skinFileName.textContent = state.views.length + ' photo(s) chargée(s).';
+    }
+    refreshActionState();
+    redraw();
+  }
+
+  function updateTurntable(){
+    if (state.views.length > 1){
+      turntable.hidden = false;
+      turnRange.max = state.views.length - 1;
+      turnRange.value = state.activeView;
+      turnLabel.textContent = (currentView() ? currentView().name : '') + ' / ' + state.views.length;
+    } else {
+      turntable.hidden = true;
+    }
+  }
+
+  turnRange.addEventListener('input', () => { setActiveView(Number(turnRange.value)); rebuildThumbs(); });
+  turnPrev.addEventListener('click', () => {
+    if (state.activeView > 0){ setActiveView(state.activeView - 1); rebuildThumbs(); updateTurntable(); }
+  });
+  turnNext.addEventListener('click', () => {
+    if (state.activeView < state.views.length - 1){ setActiveView(state.activeView + 1); rebuildThumbs(); updateTurntable(); }
+  });
+
+  function setupCanvasForImage(img){
+    const maxDim = 1000;
+    let w = img.naturalWidth, h = img.naturalHeight;
+    if (w > maxDim || h > maxDim){
+      const ratio = Math.min(maxDim / w, maxDim / h);
+      w = Math.round(w * ratio);
+      h = Math.round(h * ratio);
+    }
+    canvas.width = w;
+    canvas.height = h;
+    stageFrame.style.aspectRatio = (w / h).toFixed(4);
+  }
+
+  // ---------- 3D: body part + skin tone ----------
+  [...bodypartGrid.children].forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.part === state.bodyPart);
+    btn.addEventListener('click', () => {
+      state.bodyPart = btn.dataset.part;
+      [...bodypartGrid.children].forEach(b => b.classList.toggle('active', b === btn));
+      setBodyPartGeometry(state.bodyPart);
+      redraw();
+    });
+  });
+
+  skinToneInput.addEventListener('input', () => {
+    state.skinTone = skinToneInput.value;
+    redraw();
+  });
+
+  sampleSkinBtn.addEventListener('click', () => sampleSkinInput.click());
+  sampleSkinInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    sampleSkinInput.value = '';
+    if (!file) return;
+    skinToneStatus.textContent = 'Lecture de la photo…';
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        state.skinTone = averageColorFromImage(img);
+        skinToneInput.value = state.skinTone;
+        skinToneStatus.textContent = '✓ Teinte mise à jour depuis la photo (' + state.skinTone + ').';
+        redraw();
+      } catch (err){
+        skinToneStatus.textContent = "Impossible d'analyser cette image ici. Choisis la teinte manuellement avec le sélecteur de couleur.";
+      }
+      URL.revokeObjectURL(objectUrl);
+    };
+    img.onerror = () => {
+      skinToneStatus.textContent = "Ce fichier n'a pas pu être lu (format non supporté par le navigateur, ex. HEIC sur iPhone). Essaie un JPG ou un PNG, ou choisis la teinte manuellement.";
+      URL.revokeObjectURL(objectUrl);
+    };
+    img.src = objectUrl;
+  });
+
+  function averageColorFromImage(img){
+    const c = document.createElement('canvas');
+    c.width = 50; c.height = 50;
+    const cx = c.getContext('2d');
+    cx.drawImage(img, 0, 0, 50, 50);
+    const d = cx.getImageData(10, 10, 30, 30).data;
+    let r=0,g=0,b=0,n=0;
+    for (let i=0;i<d.length;i+=4){ r+=d[i]; g+=d[i+1]; b+=d[i+2]; n++; }
+    r = Math.round(r/n); g = Math.round(g/n); b = Math.round(b/n);
+    return '#' + [r,g,b].map(v => v.toString(16).padStart(2,'0')).join('');
+  }
+
+  function buildBumpFromPhoto(img){
+    const w = 512, h = 768;
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const cx = c.getContext('2d');
+    const ir = img.naturalWidth / img.naturalHeight, tr = w / h;
+    let sx, sy, sw, sh;
+    if (ir > tr){ sh = img.naturalHeight; sw = sh * tr; sx = (img.naturalWidth - sw) / 2; sy = 0; }
+    else { sw = img.naturalWidth; sh = sw / tr; sx = 0; sy = (img.naturalHeight - sh) / 2; }
+    cx.drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
+    const id = cx.getImageData(0, 0, w, h);
+    const d = id.data;
+    for (let i = 0; i < d.length; i += 4){
+      const lum = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+      let v = 128 + (lum - 128) * 1.4;
+      v = Math.max(0, Math.min(255, v));
+      d[i] = d[i+1] = d[i+2] = v;
+    }
+    cx.putImageData(id, 0, 0);
+    return c;
+  }
+
+  bumpUploadBtn.addEventListener('click', () => bumpUploadInput.click());
+  bumpUploadInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    bumpUploadInput.value = '';
+    if (!file) return;
+    bumpStatus.textContent = 'Lecture de la photo…';
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        state.customBumpCanvas = buildBumpFromPhoto(img);
+        applyBumpToMaterial(state.bodyPart);
+        bumpStatus.textContent = '✓ Relief mis à jour depuis ta photo.';
+        bumpClearBtn.hidden = false;
+      } catch (err){
+        bumpStatus.textContent = "Impossible d'analyser cette image ici.";
+      }
+      URL.revokeObjectURL(objectUrl);
+    };
+    img.onerror = () => {
+      bumpStatus.textContent = "Ce fichier n'a pas pu être lu (format non supporté, ex. HEIC). Essaie un JPG ou un PNG.";
+      URL.revokeObjectURL(objectUrl);
+    };
+    img.src = objectUrl;
+  });
+  bumpClearBtn.addEventListener('click', () => {
+    state.customBumpCanvas = null;
+    applyBumpToMaterial(state.bodyPart);
+    bumpClearBtn.hidden = true;
+    bumpStatus.textContent = 'Relief simulé restauré.';
+  });
+
+  // ---------- Design upload ----------
+  designUploadBtn.addEventListener('click', () => designUploadInput.click());
+  designUploadInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        state.designImg = img;
+        state.designRawImg = img;
+        state.designMaskCanvas = processDesignImage(img, state.cutout);
+        state.designId = 'custom';
+        [...flashGrid.children].forEach(el => el.classList.remove('selected'));
+        refreshActionState();
+        redraw();
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  // ---------- Background cutout ----------
+  function processDesignImage(img, cutout){
+    const w = img.naturalWidth || img.width;
+    const h = img.naturalHeight || img.height;
+    const off = document.createElement('canvas');
+    off.width = w; off.height = h;
+    const octx = off.getContext('2d');
+    octx.drawImage(img, 0, 0, w, h);
+    let data;
+    try { data = octx.getImageData(0, 0, w, h); }
+    catch (err){ return off; }
+    const px = data.data;
+    const high = 255 - cutout * 140;
+    const low = Math.max(0, high - 55);
+    for (let i = 0; i < px.length; i += 4){
+      const r = px[i], g = px[i+1], b = px[i+2], a = px[i+3];
+      const lum = (r + g + b) / 3;
+      let factor = 1 - Math.min(Math.max((lum - low) / (high - low), 0), 1);
+      px[i] = 0; px[i+1] = 0; px[i+2] = 0;
+      px[i+3] = Math.round((a / 255) * factor * 255);
+    }
+    octx.putImageData(data, 0, 0);
+    return off;
+  }
+
+  // ---------- Adjust controls (apply to the active view / 3D shape) ----------
+  scaleRange.addEventListener('input', () => {
+    const v = activeInkView(); if (!v) return;
+    v.scale = scaleRange.value / 100;
+    scaleVal.textContent = scaleRange.value + '%';
+    redraw();
+  });
+  rotRange.addEventListener('input', () => {
+    const v = activeInkView(); if (!v) return;
+    v.rotation = rotRange.value * Math.PI / 180;
+    rotVal.textContent = rotRange.value + '°';
+    redraw();
+  });
+  opacityRange.addEventListener('input', () => {
+    state.opacity = opacityRange.value / 100;
+    opacityVal.textContent = opacityRange.value + '%';
+    redraw();
+  });
+  inkColorInput.addEventListener('input', () => {
+    state.inkColor = inkColorInput.value;
+    redraw();
+  });
+  cutoutRange.addEventListener('input', () => {
+    state.cutout = cutoutRange.value / 100;
+    cutoutVal.textContent = cutoutRange.value + '%';
+    if (state.designRawImg){
+      state.designMaskCanvas = processDesignImage(state.designRawImg, state.cutout);
+      redraw();
+    }
+  });
+  blendSelect.addEventListener('change', () => { state.blend = blendSelect.value; redraw(); });
+  healedToggle.addEventListener('change', () => { state.healed = healedToggle.checked; redraw(); });
+  realismRange.addEventListener('input', () => {
+    state.realism = realismRange.value / 100;
+    realismVal.textContent = realismRange.value + '%';
+    redraw();
+  });
+  brushSize.addEventListener('input', () => { brushSizeVal.textContent = brushSize.value; });
+
+  clearDrawBtn.addEventListener('click', () => {
+    const v = activeInkView(); if (!v) return;
+    v.strokes = [];
+    redraw();
+  });
+
+  resetBtn.addEventListener('click', () => {
+    const v = currentView(); if (!v) return;
+    v.x = 0.5; v.y = 0.5; v.scale = 1; v.rotation = 0; v.strokes = [];
+    scaleRange.value = 100; scaleVal.textContent = '100%';
+    rotRange.value = 0; rotVal.textContent = '0°';
+    redraw();
+  });
+  resetBtn3d.addEventListener('click', () => {
+    const v = state.view3D;
+    v.x = 0.5; v.y = 0.5; v.scale = 1; v.rotation = 0; v.strokes = [];
+    scaleRange.value = 100; scaleVal.textContent = '100%';
+    rotRange.value = 0; rotVal.textContent = '0°';
+    redraw();
+  });
+
+  function refreshActionState(){
+    const hasViews = state.views.length > 0;
+    resetBtn.disabled = !hasViews;
+    downloadBtn.disabled = !hasViews;
+    buildPrintBtn.disabled = false;
+  }
+
+  // ---------- Pointer interaction: photo canvas ----------
+  let dragging = false;
+  let dragOffset = {x:0, y:0};
+
+  function canvasPos(canvasEl, evt){
+    const rect = canvasEl.getBoundingClientRect();
+    const sx = canvasEl.width / rect.width;
+    const sy = canvasEl.height / rect.height;
+    const clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+    const clientY = evt.touches ? evt.touches[0].clientY : evt.clientY;
+    return { x: (clientX - rect.left) * sx, y: (clientY - rect.top) * sy };
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (state.viewMode !== 'photo') return;
+    const v = currentView(); if (!v) return;
+    const p = canvasPos(canvas, e);
+    if (state.mode === 'draw'){
+      state.currentStroke = { points:[p], size: Number(brushSize.value), color: state.inkColor };
+      v.strokes.push(state.currentStroke);
+      dragging = true;
+      canvas.setPointerCapture(e.pointerId);
+      redraw();
+      return;
+    }
+    if (state.designImg){
+      dragging = true;
+      canvas.classList.add('dragging');
+      dragOffset.x = p.x - v.x * canvas.width;
+      dragOffset.y = p.y - v.y * canvas.height;
+      canvas.setPointerCapture(e.pointerId);
+    }
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!dragging || state.viewMode !== 'photo') return;
+    const v = currentView(); if (!v) return;
+    const p = canvasPos(canvas, e);
+    if (state.mode === 'draw' && state.currentStroke){
+      state.currentStroke.points.push(p);
+      redraw();
+      return;
+    }
+    if (state.designImg){
+      v.x = (p.x - dragOffset.x) / canvas.width;
+      v.y = (p.y - dragOffset.y) / canvas.height;
+      redraw();
+    }
+  });
+  function endDragPhoto(){
+    dragging = false;
+    state.currentStroke = null;
+    canvas.classList.remove('dragging');
+    refreshActionState();
+  }
+  canvas.addEventListener('pointerup', endDragPhoto);
+  canvas.addEventListener('pointerleave', endDragPhoto);
+  canvas.addEventListener('pointercancel', endDragPhoto);
+
+  // ---------- Pointer interaction: 3D placement (texCanvas) ----------
+  let dragging3d = false;
+  let dragOffset3d = {x:0, y:0};
+
+  texCanvas.addEventListener('pointerdown', (e) => {
+    if (state.viewMode !== '3d') return;
+    const v = state.view3D;
+    const p = canvasPos(texCanvas, e);
+    if (state.mode === 'draw'){
+      state.currentStroke = { points:[p], size: Number(brushSize.value), color: state.inkColor };
+      v.strokes.push(state.currentStroke);
+      dragging3d = true;
+      texCanvas.setPointerCapture(e.pointerId);
+      redraw();
+      return;
+    }
+    if (state.designImg){
+      dragging3d = true;
+      texCanvas.classList.add('dragging');
+      dragOffset3d.x = p.x - v.x * texCanvas.width;
+      dragOffset3d.y = p.y - v.y * texCanvas.height;
+      texCanvas.setPointerCapture(e.pointerId);
+    }
+  });
+  texCanvas.addEventListener('pointermove', (e) => {
+    if (!dragging3d || state.viewMode !== '3d') return;
+    const v = state.view3D;
+    const p = canvasPos(texCanvas, e);
+    if (state.mode === 'draw' && state.currentStroke){
+      state.currentStroke.points.push(p);
+      redraw();
+      return;
+    }
+    if (state.designImg){
+      v.x = (p.x - dragOffset3d.x) / texCanvas.width;
+      v.y = (p.y - dragOffset3d.y) / texCanvas.height;
+      redraw();
+    }
+  });
+  function endDrag3d(){
+    dragging3d = false;
+    state.currentStroke = null;
+    texCanvas.classList.remove('dragging');
+  }
+  texCanvas.addEventListener('pointerup', endDrag3d);
+  texCanvas.addEventListener('pointerleave', endDrag3d);
+  texCanvas.addEventListener('pointercancel', endDrag3d);
+
+  // ---------- Shared ink-layer builder ----------
+  const inkLayer = document.createElement('canvas');
+  const inkCtx = inkLayer.getContext('2d');
+  const designLayer = document.createElement('canvas');
+  const designCtx = designLayer.getContext('2d');
+  [inkCtx, designCtx, ctx, texCtx].forEach(c => {
+    if (c.imageSmoothingQuality !== undefined) c.imageSmoothingQuality = 'high';
+  });
+
+  function ensureNoiseCanvas(){
+    if (state.noiseCanvas) return state.noiseCanvas;
+    const size = 220;
+    const nc = document.createElement('canvas');
+    nc.width = size; nc.height = size;
+    const nctx = nc.getContext('2d');
+    const imgData = nctx.createImageData(size, size);
+    const d = imgData.data;
+    for (let i = 0; i < d.length; i += 4){
+      const v = Math.floor(Math.random() * 255);
+      d[i] = v; d[i+1] = v; d[i+2] = v;
+      d[i+3] = Math.floor(55 + Math.random() * 85);
+    }
+    nctx.putImageData(imgData, 0, 0);
+    state.noiseCanvas = nc;
+    return nc;
+  }
+
+  function buildInkLayer(view, targetCtx, w, h){
+    targetCtx.clearRect(0, 0, w, h);
+    if (state.mode === 'draw'){
+      view.strokes.forEach(stroke => {
+        if (stroke.points.length < 1) return;
+        targetCtx.save();
+        targetCtx.lineCap = 'round';
+        targetCtx.lineJoin = 'round';
+        targetCtx.strokeStyle = stroke.color;
+        targetCtx.lineWidth = stroke.size * (w / 600);
+        targetCtx.beginPath();
+        targetCtx.moveTo(stroke.points[0].x, stroke.points[0].y);
+        if (stroke.points.length === 1){
+          targetCtx.lineTo(stroke.points[0].x + 0.1, stroke.points[0].y + 0.1);
+        } else {
+          stroke.points.forEach(pt => targetCtx.lineTo(pt.x, pt.y));
+        }
+        targetCtx.stroke();
+        targetCtx.restore();
+      });
+    } else if (state.designImg && state.designMaskCanvas){
+      const mask = state.designMaskCanvas;
+      const mw = mask.width, mh = mask.height;
+      designLayer.width = mw;
+      designLayer.height = mh;
+      designCtx.clearRect(0,0,mw,mh);
+      designCtx.drawImage(mask, 0, 0, mw, mh);
+      designCtx.globalCompositeOperation = 'source-in';
+      designCtx.fillStyle = state.inkColor;
+      designCtx.fillRect(0,0,mw,mh);
+      designCtx.globalCompositeOperation = 'source-over';
+
+      const baseSize = w * 0.32;
+      const drawW = baseSize * view.scale;
+      const drawH = drawW * (mh / mw);
+
+      targetCtx.save();
+      targetCtx.translate(view.x * w, view.y * h);
+      targetCtx.rotate(view.rotation);
+      targetCtx.drawImage(designLayer, -drawW/2, -drawH/2, drawW, drawH);
+      targetCtx.restore();
+    }
+  }
+
+  function compositeInkOnto(baseCtx, w, h){
+    inkLayer.width = w;
+    inkLayer.height = h;
+    const view = activeInkView();
+    if (!view) return;
+    buildInkLayer(view, inkCtx, w, h);
+
+    if (state.realism > 0){
+      const noise = ensureNoiseCanvas();
+      inkCtx.save();
+      inkCtx.globalCompositeOperation = 'source-atop';
+      inkCtx.globalAlpha = 0.10 + state.realism * 0.22;
+      inkCtx.drawImage(noise, 0, 0, noise.width, noise.height, 0, 0, w, h);
+      inkCtx.restore();
+    }
+
+    const scaleFactor = w / 700;
+    const edgeBlur = state.realism * 0.28 * scaleFactor;
+    const healedBlur = state.healed ? 0.7 * scaleFactor : 0;
+    let filterStr = `blur(${(edgeBlur + healedBlur).toFixed(2)}px)`;
+    if (state.healed) filterStr += ' saturate(0.55) brightness(1.08) contrast(0.88)';
+
+    baseCtx.save();
+    baseCtx.globalAlpha = state.opacity;
+    baseCtx.globalCompositeOperation = state.blend;
+    baseCtx.filter = filterStr;
+    baseCtx.drawImage(inkLayer, 0, 0);
+    baseCtx.restore();
+  }
+
+  // ---------- Redraw: dispatch by mode ----------
+  function redraw(){
+    if (state.viewMode === '3d') redraw3D();
+    else redrawPhoto();
+  }
+
+  function redrawPhoto(){
+    const view = currentView();
+    if (!view) return;
+    ctx.clearRect(0,0,canvas.width, canvas.height);
+    ctx.drawImage(view.img, 0, 0, canvas.width, canvas.height);
+    compositeInkOnto(ctx, canvas.width, canvas.height);
+  }
+
+  function redraw3D(){
+    texCtx.clearRect(0,0,texCanvas.width, texCanvas.height);
+    texCtx.fillStyle = state.skinTone;
+    texCtx.fillRect(0,0,texCanvas.width, texCanvas.height);
+    const grad = texCtx.createLinearGradient(0,0,0,texCanvas.height);
+    grad.addColorStop(0,'rgba(255,255,255,0.08)');
+    grad.addColorStop(0.5,'rgba(0,0,0,0)');
+    grad.addColorStop(1,'rgba(0,0,0,0.12)');
+    texCtx.fillStyle = grad;
+    texCtx.fillRect(0,0,texCanvas.width, texCanvas.height);
+
+    compositeInkOnto(texCtx, texCanvas.width, texCanvas.height);
+
+    if (threeTexture){ threeTexture.needsUpdate = true; }
+    renderThree();
+  }
+
+  // ---------- Download (composite preview) ----------
+  downloadBtn.addEventListener('click', async () => {
+    if (!currentView()) return;
+    canvas.toBlob(async (blob) => { if (blob) await saveBlob(blob, 'avant-l-encre-apercu.png'); }, 'image/png');
+  });
+
+  downloadBtn3d.addEventListener('click', async () => {
+    if (!renderer) return;
+    renderThree();
+    three3dCanvas.toBlob(async (blob) => { if (blob) await saveBlob(blob, 'avant-l-encre-3d.png'); }, 'image/png');
+  });
+
+  async function saveBlob(blob, filename){
+    if (typeof claude !== 'undefined' && claude && typeof claude.use === 'function'){
+      try {
+        const downloads = await claude.use('downloads').catch(() => null);
+        if (downloads){
+          await downloads.save({ filename, data: blob });
+          return;
+        }
+      } catch (err){ /* fall through to the plain browser download below */ }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+
+  // ---------- Print (isolated design, actual size & color) ----------
+  let printState = null;
+
+  buildPrintBtn.addEventListener('click', () => {
+    const view = activeInkView();
+    if (!view) return;
+    const widthCm = Math.max(1, Number(printWidth.value) || 8);
+
+    const renderSize = 1400;
+    const temp = document.createElement('canvas');
+    temp.width = renderSize; temp.height = renderSize;
+    const tctx = temp.getContext('2d');
+    buildInkLayer(view, tctx, renderSize, renderSize);
+
+    let data;
+    try { data = tctx.getImageData(0, 0, renderSize, renderSize); }
+    catch(err){ return; }
+    const px = data.data;
+    let minX = renderSize, minY = renderSize, maxX = 0, maxY = 0, found = false;
+    for (let y = 0; y < renderSize; y += 2){
+      for (let x = 0; x < renderSize; x += 2){
+        const a = px[(y * renderSize + x) * 4 + 3];
+        if (a > 12){
+          found = true;
+          if (x < minX) minX = x; if (x > maxX) maxX = x;
+          if (y < minY) minY = y; if (y > maxY) maxY = y;
+        }
+      }
+    }
+    if (!found){ minX = 0; minY = 0; maxX = renderSize; maxY = renderSize; }
+    const pad = Math.round(renderSize * 0.02);
+    minX = Math.max(0, minX - pad); minY = Math.max(0, minY - pad);
+    maxX = Math.min(renderSize, maxX + pad); maxY = Math.min(renderSize, maxY + pad);
+    const cropW = maxX - minX, cropH = maxY - minY;
+
+    const cropped = document.createElement('canvas');
+    cropped.width = cropW; cropped.height = cropH;
+    cropped.getContext('2d').drawImage(temp, minX, minY, cropW, cropH, 0, 0, cropW, cropH);
+
+    const heightCm = widthCm * (cropH / cropW);
+    const dataUrl = cropped.toDataURL('image/png');
+    printState = { dataUrl, widthCm, heightCm };
+
+    printThumb.src = dataUrl;
+    printMeta.textContent = 'Taille imprimée : ' + widthCm.toFixed(1) + ' × ' + heightCm.toFixed(1) + ' cm · couleur : ' + state.inkColor;
+    printPreview.hidden = false;
+    printActions.hidden = false;
+
+    printSheetImg.src = dataUrl;
+    printSheetImg.style.width = widthCm + 'cm';
+    printSheetImg.style.height = 'auto';
+  });
+
+  printDownloadBtn.addEventListener('click', async () => {
+    if (!printState) return;
+    const res = await fetch(printState.dataUrl);
+    const blob = await res.blob();
+    await saveBlob(blob, 'avant-l-encre-motif-' + printState.widthCm.toFixed(1) + 'cm.png');
+  });
+
+  printBtn.addEventListener('click', () => {
+    if (!printState) return;
+    try { window.print(); }
+    catch (err){
+      alert("L'impression directe n'est pas disponible ici — utilise plutôt \"Télécharger\" puis imprime l'image depuis ton appareil (pense à régler l'échelle d'impression sur 100 %).");
+    }
+  });
+
+  // ================= 3D engine (three.js) =================
+  let renderer = null, scene = null, camera = null, mesh = null, threeTexture = null;
+  let threeReady = false;
+  const cam = { azimuth: 0.5, polar: 1.25, distance: 4.6 };
+
+  function initThreeIfNeeded(){
+    if (threeReady) return;
+    if (typeof THREE === 'undefined'){
+      threeError.hidden = false;
+      return;
+    }
+    threeReady = true;
+    renderer = new THREE.WebGLRenderer({ canvas: three3dCanvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+    const dir1 = new THREE.DirectionalLight(0xffffff, 0.9); dir1.position.set(3,4,5); scene.add(dir1);
+    const dir2 = new THREE.DirectionalLight(0xffffff, 0.35); dir2.position.set(-4,-2,-3); scene.add(dir2);
+
+    threeTexture = new THREE.CanvasTexture(texCanvas);
+    threeTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    threeTexture.wrapS = THREE.RepeatWrapping;
+    threeTexture.repeat.x = -1;
+    threeTexture.offset.x = 1;
+
+    const geo = buildGeometry(state.bodyPart);
+    const mat = new THREE.MeshStandardMaterial({ map: threeTexture, roughness: 0.8, metalness: 0.02, side: THREE.DoubleSide });
+    mesh = new THREE.Mesh(geo, mat);
+    mesh.scale.set(1, 1, geo.userData.flattenZ || 1);
+    scene.add(mesh);
+    applyBumpToMaterial(state.bodyPart);
+
+    updateCameraPosition();
+    resizeThree();
+    attachThreeControls();
+  }
+
+  function buildGeometry(part){
+    // Each profile is a silhouette (radius, height) from top to bottom, revolved
+    // around the vertical axis — like a potter's lathe — to approximate a clay
+    // mannequin limb/torso instead of a plain tube.
+    const profiles = {
+      bras:      [[0,1.00],[0.55,0.90],[0.88,0.72],[0.95,0.50],[0.88,0.22],[0.80,-0.05],[0.75,-0.35],[0.65,-0.62],[0.52,-0.85],[0,-1.00]],
+      avantbras: [[0,1.00],[0.75,0.85],[0.80,0.55],[0.72,0.20],[0.62,-0.10],[0.52,-0.40],[0.44,-0.65],[0.36,-0.85],[0,-1.00]],
+      jambe:     [[0,1.00],[0.70,0.88],[1.00,0.65],[0.95,0.35],[0.80,0.05],[0.70,-0.20],[0.62,-0.45],[0.58,-0.70],[0.50,-0.90],[0,-1.00]],
+      mollet:    [[0,1.00],[0.65,0.85],[0.88,0.55],[0.80,0.20],[0.62,-0.10],[0.48,-0.40],[0.38,-0.65],[0.30,-0.85],[0,-1.00]],
+      dos:       [[0.32,1.00],[0.34,0.92],[0.65,0.82],[1.00,0.68],[0.98,0.45],[0.90,0.15],[0.85,-0.15],[0.72,-0.45],[0.62,-0.75],[0.58,-1.00]],
+      torse:     [[0.30,1.00],[0.33,0.90],[0.62,0.80],[0.95,0.65],[1.00,0.40],[0.92,0.10],[0.88,-0.20],[0.78,-0.50],[0.66,-0.78],[0.60,-1.00]],
+    };
+    const scales = {
+      bras:      { r:0.95, h:3.0 },
+      avantbras: { r:0.78, h:2.6 },
+      jambe:     { r:1.05, h:3.6 },
+      mollet:    { r:0.85, h:2.7 },
+      dos:       { r:1.7, h:2.9, flattenZ:0.5 },
+      torse:     { r:1.4, h:2.6, flattenZ:0.58 },
+    };
+    const prof = profiles[part] || profiles.bras;
+    const sc = scales[part] || scales.bras;
+    const pts = prof.map(([r, y]) => new THREE.Vector2(r * sc.r, y * sc.h / 2));
+    const geo = new THREE.LatheGeometry(pts, 56);
+    geo.userData.flattenZ = sc.flattenZ || 1;
+    return geo;
+  }
+
+  // Simulated muscle relief (bump map): a grayscale height map faking shoulder
+  // blades, spine groove, biceps/calf bulges etc. through lighting, since the
+  // lathe-revolved mesh itself can only carry a symmetric silhouette.
+  const MUSCLE_MAPS = {
+    dos:       { groove:{x:0.5, darkness:0.4}, bumps:[
+                 {x:0.30,y:0.24,r:0.20,h:0.55},{x:0.70,y:0.24,r:0.20,h:0.55},
+                 {x:0.27,y:0.50,r:0.17,h:0.35},{x:0.73,y:0.50,r:0.17,h:0.35},
+                 {x:0.50,y:0.14,r:0.16,h:0.30} ] },
+    torse:     { bumps:[
+                 {x:0.34,y:0.24,r:0.17,h:0.55},{x:0.66,y:0.24,r:0.17,h:0.55},
+                 {x:0.50,y:0.45,r:0.10,h:-0.25},{x:0.50,y:0.58,r:0.10,h:-0.20},
+                 {x:0.50,y:0.70,r:0.10,h:-0.15} ] },
+    bras:      { bumps:[ {x:0.5,y:0.32,r:0.24,h:0.6} ] },
+    avantbras: { bumps:[ {x:0.5,y:0.28,r:0.20,h:0.4} ] },
+    jambe:     { bumps:[ {x:0.5,y:0.22,r:0.24,h:0.5} ] },
+    mollet:    { bumps:[ {x:0.5,y:0.32,r:0.22,h:0.5} ] },
+  };
+
+  function buildBumpTexture(part){
+    const w = 512, h = 768;
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const cx = c.getContext('2d');
+    cx.fillStyle = '#808080';
+    cx.fillRect(0,0,w,h);
+    const def = MUSCLE_MAPS[part] || {};
+    (def.bumps || []).forEach(b => {
+      const g = cx.createRadialGradient(b.x*w, b.y*h, 2, b.x*w, b.y*h, b.r*Math.max(w,h));
+      const val = Math.max(0, Math.min(255, Math.round(128 + b.h*127)));
+      g.addColorStop(0, `rgb(${val},${val},${val})`);
+      g.addColorStop(1, 'rgba(128,128,128,0)');
+      cx.fillStyle = g;
+      cx.fillRect(0,0,w,h);
+    });
+    if (def.groove){
+      const gx = def.groove.x * w;
+      const grad = cx.createLinearGradient(gx-36,0,gx+36,0);
+      const dv = Math.max(0, Math.round(128 * (1 - def.groove.darkness)));
+      grad.addColorStop(0,'rgba(128,128,128,0)');
+      grad.addColorStop(0.5, `rgb(${dv},${dv},${dv})`);
+      grad.addColorStop(1,'rgba(128,128,128,0)');
+      cx.fillStyle = grad;
+      cx.fillRect(gx-36,0,72,h);
+    }
+    return c;
+  }
+
+  function applyBumpToMaterial(part){
+    if (!mesh) return;
+    const src = state.customBumpCanvas || buildBumpTexture(part);
+    const bumpTex = new THREE.CanvasTexture(src);
+    bumpTex.wrapS = THREE.RepeatWrapping;
+    bumpTex.repeat.x = -1;
+    bumpTex.offset.x = 1;
+    mesh.material.bumpMap = bumpTex;
+    mesh.material.bumpScale = state.customBumpCanvas ? 0.16 : 0.09;
+    mesh.material.needsUpdate = true;
+  }
+
+  function applyGeometryToMesh(geo){
+    mesh.geometry.dispose();
+    mesh.geometry = geo;
+    const fz = geo.userData.flattenZ || 1;
+    mesh.scale.set(1, 1, fz);
+  }
+
+  function setBodyPartGeometry(part){
+    if (!mesh) return;
+    applyGeometryToMesh(buildGeometry(part));
+    applyBumpToMaterial(part);
+  }
+
+  function updateCameraPosition(){
+    if (!camera) return;
+    const x = cam.distance * Math.sin(cam.polar) * Math.sin(cam.azimuth);
+    const y = cam.distance * Math.cos(cam.polar);
+    const z = cam.distance * Math.sin(cam.polar) * Math.cos(cam.azimuth);
+    camera.position.set(x, y, z);
+    camera.lookAt(0, 0, 0);
+  }
+
+  function renderThree(){
+    if (renderer && scene && camera) renderer.render(scene, camera);
+  }
+
+  function resizeThree(){
+    if (!renderer || !camera) return;
+    const parent = three3dCanvas.parentElement;
+    const w = parent.clientWidth || 400;
+    const h = parent.clientHeight || 300;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderThree();
+  }
+  window.addEventListener('resize', () => { if (state.viewMode === '3d') resizeThree(); });
+
+  function attachThreeControls(){
+    let rotating = false;
+    let lastX = 0, lastY = 0;
+
+    three3dCanvas.addEventListener('pointerdown', (e) => {
+      rotating = true;
+      lastX = e.clientX; lastY = e.clientY;
+      three3dCanvas.classList.add('dragging');
+      three3dCanvas.setPointerCapture(e.pointerId);
+    });
+    three3dCanvas.addEventListener('pointermove', (e) => {
+      if (!rotating) return;
+      const dx = e.clientX - lastX;
+      const dy = e.clientY - lastY;
+      lastX = e.clientX; lastY = e.clientY;
+      cam.azimuth += dx * 0.008;
+      cam.polar = Math.min(Math.max(cam.polar - dy * 0.008, 0.2), Math.PI - 0.2);
+      updateCameraPosition();
+      renderThree();
+    });
+    function stopRotate(){ rotating = false; three3dCanvas.classList.remove('dragging'); }
+    three3dCanvas.addEventListener('pointerup', stopRotate);
+    three3dCanvas.addEventListener('pointerleave', stopRotate);
+    three3dCanvas.addEventListener('pointercancel', stopRotate);
+
+    three3dCanvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      cam.distance = Math.min(Math.max(cam.distance + e.deltaY * 0.0025, 2.2), 9);
+      updateCameraPosition();
+      renderThree();
+    }, { passive:false });
+  }
+
+  // ---------- init ----------
+  selectFlashDesign(FLASH_DESIGNS[0]);
+  refreshActionState();
+
+})();
+</script>
+</body>
+</html>
